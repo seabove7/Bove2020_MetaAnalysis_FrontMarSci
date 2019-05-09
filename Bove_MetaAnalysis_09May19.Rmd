@@ -1,0 +1,301 @@
+---
+title: "Bove Meta Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r start, message=FALSE}
+setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code")
+df <- read.csv("effectsize_26Nov18.csv") 
+df$cite <- paste(df$author, df$year, sep = " ")
+
+library("metafor")
+library("MAd")
+library("ggplot2")
+library("tidyr")
+library("plyr")
+library("lme4")
+theme_set(theme_bw())
+dodge<-position_dodge(0.2)
+```
+
+# Create the Effect Size and Variance Data Frame
+### Set up the dataframe of effect size and variance for acidification and warming ONLY studies
+
+Effect size (yi) and variance (vi). Variables with a 1 are control, 3 represent acidification, 4 are warming, and 6 is the interaction studies. 'm' is the mean calcification rate, 'n' is sample size, and 's' is the standard error of mean calcification rate per study. 
+
+```{r ES1, echo=TRUE, warning=FALSE, message=FALSE, tidy=TRUE}
+# calculate ES and variance for ocean acidification
+ES.oa<-escalc(measure="ROM", m1i=cm1, m2i=am3, sd1i=s1, sd2i=s3, n1i=n1, n2i=n3,  method="REML", data=df)
+
+# calculate ES and variance ES for ocean warming
+ES.ow<-escalc(measure="ROM", m1i=cm1, m2i=wm4, sd1i=s1, sd2i=s4, n1i=n1, n2i=n4,  method="REML", data=df)
+
+#create DF of calculated variables of OA
+acid<-data.frame("cm1"=ES.oa$cm1,"yi.a"=ES.oa$yi,"vi.a"=ES.oa$vi)
+
+# merge together warming and acid DF 
+ES.full<-merge(ES.ow,acid,by="cm1")
+ES.full<-rename(ES.full,c("yi"="yi.w","vi"="vi.w"))
+ES.full<-ES.full[order(ES.full$cite), ]
+ES.full$yi.w<-(ES.full$yi.w)*-1
+ES.full$yi.a<-(ES.full$yi.a)*-1
+```
+
+Calculate the standard deviation of the calcification mean (sd) and then the pooled standard deviation (S).
+
+```{r sd}
+# calculate sd for all 
+ES.full$sd1<-ES.full$s1*sqrt(ES.full$n1)
+ES.full$sd3<-ES.full$s3*sqrt(ES.full$n3)
+ES.full$sd4<-ES.full$s4*sqrt(ES.full$n4)
+ES.full$sd6<-ES.full$s6*sqrt(ES.full$n6)
+
+# calculate S for all treatments
+ES.full$Sa<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd3^2/ES.full$n3))
+ES.full$Sw<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd4^2/ES.full$n4))
+ES.full$Si<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd6^2/ES.full$n6))
+```
+
+### Calculate ES and variance on the interaction studies
+These equations were taken from Harvey et al. 2013 (https://dx.doi.org/10.1002%2Fece3.516) 
+
+```{r ESinter}
+# calculate ES using Harvey et al equations for acidification, warming, and interaction studies
+ES.full$lnRRa<-((ES.full$am3-ES.full$cm1)/ES.full$Sa)
+ES.full$lnRRt<-((ES.full$wm4-ES.full$cm1)/ES.full$Sw)
+ES.full$yi.i<-((ES.full$m6-ES.full$wm4)-(ES.full$am3-ES.full$cm1))/(2*ES.full$Si)
+
+# calculate V for interaction studies ONLY
+ES.full$vi.i<-(1/ES.full$n1)+(1/ES.full$n3)+(1/ES.full$n4)+(1/ES.full$n6)+((ES.full$yi.i^2)/(2*(ES.full$n1+ES.full$n3+ES.full$n4+ES.full$n6)))
+```
+
+Finally, write the new data frame as a new CSV file for faster use.
+```{r writeCSV}
+write.csv(ES.full,file="ES.full_26Nov18.csv")
+```
+
+### Create long version of ES dataframe
+I am using the metafor calculated ES and variance for acidification and wamring alone, but the Harvey et al calculated ES and variance for the interactions... I am not sure if this is the best method? 
+```{r start2}
+# read in the saved CSV and then removed any unneeded columns
+df<-read.csv("ES.full_26Nov18.csv")
+df<-df[,-c(12:22)]
+df<-df[,-c(17:23)]
+df<-df[,-c(17:18)]
+df<-df[,-2]
+```
+
+```{r datamanip}
+#subset df for variance (v) values only as new df
+df2b<-subset(df, select=c(X,vi.i,vi.a,vi.w))
+
+#subset df to remove only variance (v) values as another new df
+df.m <-subset(df, select=-c(vi.i,vi.a,vi.w))
+
+# this creates df with treat and V as column headers in long format
+df2b<-gather(df2b, treat, v,vi.i:vi.w)
+
+#substitute y for v for merge later
+df2b$treat<-gsub('v','y', df2b$treat)
+
+#creates another long format df with treat and Y as headers (of Y values)
+df.m <-gather(df.m, treat, y,yi.w:yi.i)
+df.m $treat<-as.factor(df.m $treat)
+
+#merge two df into one
+df2<-merge(df.m, df2b, by=c("X", "treat"))
+
+#remove any NAs
+df2<-na.omit(df2)
+df2$study <- paste(df2$author, df2$year, sep = "_")
+df2$X<-NULL
+head(df2)
+```
+
+#Fitting models to each treatment
+
+```{r rma}
+# subset data by treatment
+OW<-subset(df2, treat=="yi.w")
+OA<-subset(df2, treat=="yi.a")
+IN<-subset(df2, treat=="yi.i")
+
+# fit model to each treatment
+ow<-rma(y,v,data=OW)
+oa<-rma(y,v,data=OA)
+both<-rma(y,v,data=IN)
+```
+
+###View OA model output with forest and funnel plots
+```{r oa, echo=FALSE}
+oa
+forest(oa)
+funnel(oa)
+```
+
+###View OW model output with forest and funnel plots
+```{r ow, echo=FALSE}
+ow
+forest(ow)
+funnel(ow)
+```
+
+###View interaction model output with forest and funnel plots
+```{r both, echo=FALSE}
+both
+forest(both)
+funnel(both)
+```
+
+#Fitting models by region (Florida and Belize only)
+Remove regions so that only Florida and Belize studies remain
+```{r region1}
+df2a<-subset(df2, region!="Curacao")
+df2a<-subset(df2a, region!="Little Cayman")
+df2a<-subset(df2a, region!="Mexico")
+
+# OA subset
+OA2<-subset(df2a, treat=="yi.a")
+
+# OW subset
+OW2<-subset(df2a, treat=="yi.w")
+
+# Interaction subset
+IN2<-subset(df2a, treat=="yi.i")
+
+```
+
+Fit models to each treatment by region
+```{r regionRMA, warning=FALSE}
+# acidification by warming
+oa.r<-rma(y,v,mods=~region, data=OA2)
+
+# warming by regions
+ow.r<-rma(y,v,mods=~region, data=OW2)
+
+# interactions by region
+in.r<-rma(y,v,mods=~region, data=IN2)
+```
+
+### View region-specific model output per treatment
+**Ocean acidification**
+```{r OAregion, echo=FALSE}
+oa.r
+```
+
+**Ocean warming**
+```{r OWregion, echo=FALSE}
+ow.r
+```
+
+**Interaction of acidification and warming**
+```{r intregion, echo=FALSE}
+in.r
+```
+
+#Fitting mixed effects models and bootstrapping confidence intervals
+Modify dataframe to remove and missing values and set seed/interations
+```{r fullModel}
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
+
+df2 <- completeFun(df2, "y")
+head(df2)
+
+bootnum = 90 # set the number of iterations (will use 9000 for the final run)
+seed = 4 #seed to make results replicatable
+```
+
+### This is the global model by treatment only
+```{r}
+#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
+global.mod <- lmer(y ~ treat + (1 | study) , data = df2) # this model runs fine at this point, but will produce singular fits when bootstrapped
+
+summary(global.mod) # view summary output of model
+AIC(global.mod) # check the AIC
+
+```
+
+**Bootstrap the model and estimate the 95% confidence intervals and mean**
+```{r}
+out <- simulate(global.mod,nsim=bootnum,seed=seed,re.form=NULL)
+boots <- apply(out,2,function(x) predict(lmer(x ~ treat + (1 | study), data = df2),re.form=NA))
+
+boots <- cbind(predict(global.mod,re.form=NA), boots)
+#estimate the mean and 95%confidence intervals for the prediction
+df.a <- (cbind(df2, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
+
+colnames(df.a)[15:17] <- c("mean", "lowerci", "upperci")
+head(df.a)
+
+```
+
+###Plot estimated mean and CI
+```{r echo=FALSE}
+df.a$treat <- factor(df.a$treat, levels = c("yi.a","yi.w","yi.i"))
+
+ggplot(df.a, aes(x=treat, y=mean))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Treatment")+
+  scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "interaction"))+
+  geom_hline(yintercept=0, linetype=2, colour="black")+
+  geom_errorbar(aes(ymin=lowerci, ymax=upperci, width=0.1), size=0.6)+
+  geom_point(size=6, shape=16, colour="black")+
+  ylim(-1.6,0.6)
+```
+
+### This is the model by region (Florida and Belize only) for all treatments
+```{r}
+df2a<-subset(df2, region!="Curacao")
+df2a<-subset(df2a, region!="Little Cayman")
+df2a<-subset(df2a, region!="Mexico")
+
+#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
+region.mod <- lmer(y ~ treat * region + (1 | study) , data = df2a) # this model runs fine at this point, but will produce singular fits when bootstrapped
+
+summary(region.mod) # view summary output of model
+AIC(region.mod) # check the AIC
+
+```
+
+**Bootstrap the model and estimate the 95% confidence intervals and mean**
+```{r}
+out <- simulate(region.mod,nsim=bootnum,seed=seed,re.form=NULL)
+boots <- apply(out,2,function(x) predict(lmer(x ~ treat * region + (1 | study), data = df2a),re.form=NA))
+
+boots <- cbind(predict(region.mod,re.form=NA), boots)
+#estimate the mean and 95%confidence intervals for the prediction
+df.reg <- (cbind(df2a, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
+
+colnames(df.reg)[15:17] <- c("mean", "lowerci", "upperci")
+head(df.reg)
+
+```
+
+###Plot estimated mean and CI
+```{r echo=FALSE}
+df.reg$treat <- factor(df.reg$treat, levels = c("yi.a","yi.w","yi.i"))
+
+ggplot(df.reg, aes(x=treat, y=mean))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Treatment")+
+  scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "interaction"))+
+  geom_hline(yintercept=0, linetype=2, colour="black")+
+  geom_errorbar(aes(ymin=lowerci, ymax=upperci, width=0.1), size=0.6)+
+  geom_point(size=6, shape=16, colour="black")+
+  facet_grid(~region)+
+  ylim(-1.6,0.6)
+```
+
