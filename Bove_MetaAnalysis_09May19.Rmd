@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r start, message=FALSE}
 setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code")
-df <- read.csv("effectsize_26Nov18.csv") 
+df <- read.csv("effectsize_09May19.csv") 
 df$cite <- paste(df$author, df$year, sep = " ")
 
 library("metafor")
@@ -75,18 +75,16 @@ ES.full$vi.i<-(1/ES.full$n1)+(1/ES.full$n3)+(1/ES.full$n4)+(1/ES.full$n6)+((ES.f
 
 Finally, write the new data frame as a new CSV file for faster use.
 ```{r writeCSV}
-write.csv(ES.full,file="ES.full_26Nov18.csv")
+write.csv(ES.full,file="ES.full_10May19.csv")
 ```
 
 ### Create long version of ES dataframe
 I am using the metafor calculated ES and variance for acidification and wamring alone, but the Harvey et al calculated ES and variance for the interactions... I am not sure if this is the best method? 
 ```{r start2}
 # read in the saved CSV and then removed any unneeded columns
-df<-read.csv("ES.full_26Nov18.csv")
-df<-df[,-c(12:22)]
-df<-df[,-c(17:23)]
-df<-df[,-c(17:18)]
-df<-df[,-2]
+df<-read.csv("ES.full_10May19.csv")
+df<-df[,-c(2, 12, 13, 16:18, 20:22, 24:26, 34:42)] #remove any unneeded columns
+
 ```
 
 ```{r datamanip}
@@ -110,10 +108,15 @@ df.m $treat<-as.factor(df.m $treat)
 df2<-merge(df.m, df2b, by=c("X", "treat"))
 
 #remove any NAs
-df2<-na.omit(df2)
+#df2<-na.omit(df2)
 df2$study <- paste(df2$author, df2$year, sep = "_")
 df2$X<-NULL
 head(df2)
+```
+Here I am going ahead and calculating the magnitude difference for pCO2 and temperature treatments
+```{r}
+df2$mag.p <- df2$a.pco2 - df2$c.pco2
+df2$mag.t <- df2$w.temp - df2$c.temp
 ```
 
 #Fitting models to each treatment
@@ -231,7 +234,7 @@ boots <- cbind(predict(global.mod,re.form=NA), boots)
 #estimate the mean and 95%confidence intervals for the prediction
 df.a <- (cbind(df2, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
 
-colnames(df.a)[15:17] <- c("mean", "lowerci", "upperci")
+colnames(df.a)[23:25] <- c("mean", "lowerci", "upperci")
 head(df.a)
 
 ```
@@ -276,7 +279,7 @@ boots <- cbind(predict(region.mod,re.form=NA), boots)
 #estimate the mean and 95%confidence intervals for the prediction
 df.reg <- (cbind(df2a, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
 
-colnames(df.reg)[15:17] <- c("mean", "lowerci", "upperci")
+colnames(df.reg)[23:25] <- c("mean", "lowerci", "upperci")
 head(df.reg)
 
 ```
@@ -297,5 +300,110 @@ ggplot(df.reg, aes(x=treat, y=mean))+
   geom_point(size=6, shape=16, colour="black")+
   facet_grid(~region)+
   ylim(-1.6,0.6)
+```
+
+### Now I am doing models with treatment magnitude
+# Ocean acidification
+This is the global OA model by magnitude
+```{r}
+df2.oa <- subset(df2, treat=="yi.a")
+summary(df2.oa)
+#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
+OA.mod <- lmer(y ~ mag.p + region + (1 | study), data = df2.oa) # this model runs fine at this point, but will produce singular fits when bootstrapped
+
+summary(OA.mod) # view summary output of model
+AIC(OA.mod) # check the AIC
+coef(summary(OA.mod))
+```
+
+###Plot the slope/intercept of OA model on data
+```{r echo=FALSE}
+ggplot(df2.oa, aes(x=mag.p, y=y, group=treat, shape=region))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  geom_abline(slope = coef(summary(OA.mod))[2,1], intercept = coef(summary(OA.mod))[1,1])+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Magnitube of pCO2 change")+
+  geom_point(size=6, colour="black")
+```
+
+This is the region OA model by and magnitude
+```{r}
+df2a<-subset(df2, region!="Curacao")
+df2a<-subset(df2a, region!="Little Cayman")
+df2a<-subset(df2a, region!="Mexico")
+df2.oa.r <- subset(df2a, treat=="yi.a")
+summary(df2.oa.r)
+
+OA.mod2 <- lmer(y ~ mag.p + region + (1 | study), data = df2.oa.r) 
+
+summary(OA.mod2) # view summary output of model
+AIC(OA.mod2) # check the AIC
+coef(summary(OA.mod2))
+
+```
+
+###Plot the OA slope/intercept of model on data
+```{r echo=FALSE}
+ggplot(df2.oa.r, aes(x=mag.p, y=y, shape = region))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  #facet_wrap(~region)+
+  theme(legend.key=element_blank())+
+  geom_abline(slope = coef(summary(OA.mod2))[2,1], intercept = coef(summary(OA.mod2))[1,1])+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Magnitube of pCO2 change")+
+  geom_point(size=6, colour="black")
+```
+
+# Ocean warming
+This is the global OW model by magnitude
+```{r}
+df2.ow <- subset(df2, treat=="yi.w")
+summary(df2.ow)
+OW.mod <- lmer(y ~ mag.t + region + (1 | study), data = df2.ow)
+
+summary(OW.mod) # view summary output of model
+AIC(OW.mod) # check the AIC
+coef(summary(OW.mod))
+```
+
+###Plot the slope/intercept of OW model on data
+```{r echo=FALSE}
+ggplot(df2.ow, aes(x=mag.t, y=y, group=treat, shape=region))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  geom_abline(slope = coef(summary(OW.mod))[2,1], intercept = coef(summary(OW.mod))[1,1])+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Magnitube of temperature change")+
+  geom_point(size=6, colour="black")
+```
+
+This is the region OW model by and magnitude
+```{r}
+df2.ow.r <- subset(df2a, treat=="yi.w")
+summary(df2.ow.r)
+
+OW.mod2 <- lmer(y ~ mag.t + region + (1 | study), data = df2.ow.r) 
+
+summary(OW.mod2) # view summary output of model
+AIC(OW.mod2) # check the AIC
+coef(summary(OW.mod2))
+
+```
+
+###Plot the OW slope/intercept of model on data
+```{r echo=FALSE}
+ggplot(df2.ow.r, aes(x=mag.t, y=y, shape = region))+
+  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  #facet_wrap(~region)+
+  theme(legend.key=element_blank())+
+  geom_abline(slope = coef(summary(OW.mod2))[2,1], intercept = coef(summary(OW.mod2))[1,1])+
+  ylab("Mean effect size (LnRR)")+
+  xlab("Magnitube of temperature change")+
+  geom_point(size=6, colour="black")
 ```
 
