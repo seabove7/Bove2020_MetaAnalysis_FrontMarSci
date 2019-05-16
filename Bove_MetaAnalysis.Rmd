@@ -6,9 +6,9 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
+This version of the script was last committed to GitHub on 16 May 19
 ```{r start, message=FALSE}
-setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code")
+setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis_15May19_files")
 df <- read.csv("effectsize_09May19.csv") 
 df$cite <- paste(df$author, df$year, sep = " ")
 
@@ -18,8 +18,11 @@ library("ggplot2")
 library("tidyr")
 library("plyr")
 library("lme4")
+library("tidystats")
+library("plyr")
 theme_set(theme_bw())
 dodge<-position_dodge(0.2)
+seed = 4 #seed to make results replicatable
 ```
 
 # Create the Effect Size and Variance Data Frame
@@ -117,6 +120,9 @@ Here I am going ahead and calculating the magnitude difference for pCO2 and temp
 ```{r}
 df2$mag.p <- df2$a.pco2 - df2$c.pco2
 df2$mag.t <- df2$w.temp - df2$c.temp
+
+df2$mag.cent.p <- df2$mag.p - 127 #make a centered around 0 column
+df2$mag.cent.t <- df2$mag.t - 1.0 #make a centered around 0 column
 ```
 
 #Fitting models to each treatment
@@ -200,7 +206,7 @@ ow.r
 in.r
 ```
 
-#Fitting mixed effects models and bootstrapping confidence intervals
+#Fitting mixed effects models 
 Modify dataframe to remove and missing values and set seed/interations
 ```{r fullModel}
 completeFun <- function(data, desiredCols) {
@@ -210,40 +216,31 @@ completeFun <- function(data, desiredCols) {
 
 df2 <- completeFun(df2, "y")
 head(df2)
-
-bootnum = 90 # set the number of iterations (will use 9000 for the final run)
-seed = 4 #seed to make results replicatable
 ```
 
 ### This is the global model by treatment only
 ```{r}
-#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
-global.mod <- lmer(y ~ treat + (1 | study) , data = df2) # this model runs fine at this point, but will produce singular fits when bootstrapped
-
+global.mod <- rma.mv(y,v, mods = ~ treat, random = list(~ (1|study), ~ (1|species)), data = df2) 
 summary(global.mod) # view summary output of model
 AIC(global.mod) # check the AIC
 
+# create new df of just the mean and CI for each treatment
+global.out <- tidy_stats(global.mod)
+global.out <- global.out[, c(2,4,5)]
+selected <- c("b","2.5% CI", "97.5% CI")
+global.out <- global.out[global.out$statistic %in% selected,]
+global.out <- spread(global.out, key = statistic, value = value)
+global.out <- rename(global.out, c("term"="treat", "2.5% CI"="lb","97.5% CI"="ub", "b"="mean"))
+global.out$treat <- as.factor(global.out$treat)
+levels(global.out$treat) <- c("yi.a", "yi.i", "yi.w")
+global.out
 ```
 
-**Bootstrap the model and estimate the 95% confidence intervals and mean**
-```{r}
-out <- simulate(global.mod,nsim=bootnum,seed=seed,re.form=NULL)
-boots <- apply(out,2,function(x) predict(lmer(x ~ treat + (1 | study), data = df2),re.form=NA))
-
-boots <- cbind(predict(global.mod,re.form=NA), boots)
-#estimate the mean and 95%confidence intervals for the prediction
-df.a <- (cbind(df2, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
-
-colnames(df.a)[23:25] <- c("mean", "lowerci", "upperci")
-head(df.a)
-
-```
-
-###Plot estimated mean and CI
+###Plot mean and CI
 ```{r echo=FALSE}
-df.a$treat <- factor(df.a$treat, levels = c("yi.a","yi.w","yi.i"))
+global.out$treat <- factor(global.out$treat, levels = c("yi.a","yi.w","yi.i"))
 
-ggplot(df.a, aes(x=treat, y=mean))+
+ggplot(global.out, aes(x=treat, y=mean))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -251,7 +248,7 @@ ggplot(df.a, aes(x=treat, y=mean))+
   xlab("Treatment")+
   scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "interaction"))+
   geom_hline(yintercept=0, linetype=2, colour="black")+
-  geom_errorbar(aes(ymin=lowerci, ymax=upperci, width=0.1), size=0.6)+
+  geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
   geom_point(size=6, shape=16, colour="black")+
   ylim(-1.6,0.6)
 ```
@@ -262,33 +259,28 @@ df2a<-subset(df2, region!="Curacao")
 df2a<-subset(df2a, region!="Little Cayman")
 df2a<-subset(df2a, region!="Mexico")
 
-#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
-region.mod <- lmer(y ~ treat * region + (1 | study) , data = df2a) # this model runs fine at this point, but will produce singular fits when bootstrapped
-
+region.mod <- rma.mv(y,v, mods = ~ treat * region, random = list(~ (1|study), ~ (1|species)), data = df2a)
 summary(region.mod) # view summary output of model
 AIC(region.mod) # check the AIC
 
+# create new df of just the mean and CI for each treatment
+region.out <- tidy_stats(region.mod)
+region.out <- region.out[, c(2,4,5)]
+selected <- c("b","2.5% CI", "97.5% CI")
+region.out <- region.out[region.out$statistic %in% selected,]
+region.out <- spread(region.out, key = statistic, value = value)
+region.out <- rename(region.out, c("term"="treat", "2.5% CI"="lb","97.5% CI"="ub", "b"="mean"))
+region.out$treat <- as.factor(region.out$treat)
+region.out$region <- c("Belize", "Florida Keys","Belize", "Florida Keys","Belize", "Florida Keys")
+levels(region.out$treat) <- c("yi.a","yi.a", "yi.i","yi.i", "yi.w", "yi.w")
+region.out
 ```
 
-**Bootstrap the model and estimate the 95% confidence intervals and mean**
-```{r}
-out <- simulate(region.mod,nsim=bootnum,seed=seed,re.form=NULL)
-boots <- apply(out,2,function(x) predict(lmer(x ~ treat * region + (1 | study), data = df2a),re.form=NA))
-
-boots <- cbind(predict(region.mod,re.form=NA), boots)
-#estimate the mean and 95%confidence intervals for the prediction
-df.reg <- (cbind(df2a, as.data.frame(t(apply(boots, 1, function(x) c(mean(x),quantile(x, c(0.025, 0.975))))))))
-
-colnames(df.reg)[23:25] <- c("mean", "lowerci", "upperci")
-head(df.reg)
-
-```
-
-###Plot estimated mean and CI
+###Plot mean and CI by regions
 ```{r echo=FALSE}
-df.reg$treat <- factor(df.reg$treat, levels = c("yi.a","yi.w","yi.i"))
+region.out$treat <- factor(region.out$treat, levels = c("yi.a","yi.w","yi.i"))
 
-ggplot(df.reg, aes(x=treat, y=mean))+
+ggplot(region.out, aes(x=treat, y=mean))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -296,10 +288,9 @@ ggplot(df.reg, aes(x=treat, y=mean))+
   xlab("Treatment")+
   scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "interaction"))+
   geom_hline(yintercept=0, linetype=2, colour="black")+
-  geom_errorbar(aes(ymin=lowerci, ymax=upperci, width=0.1), size=0.6)+
+  geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
   geom_point(size=6, shape=16, colour="black")+
-  facet_grid(~region)+
-  ylim(-1.6,0.6)
+  facet_wrap(~region)
 ```
 
 ### Now I am doing models with treatment magnitude
@@ -308,8 +299,8 @@ This is the global OA model by magnitude
 ```{r}
 df2.oa <- subset(df2, treat=="yi.a")
 summary(df2.oa)
-#yourmodel <- lmer(y ~ treat + (1 | species) + (1 | author), data = df2) # this model has a singular fit
-OA.mod <- lmer(y ~ mag.p + region + (1 | study), data = df2.oa) # this model runs fine at this point, but will produce singular fits when bootstrapped
+
+OA.mod <- rma.mv(y,v, mods = ~ mag.cent.p + region, random = ~ (1|study), data = df2.oa)
 
 summary(OA.mod) # view summary output of model
 AIC(OA.mod) # check the AIC
@@ -318,7 +309,7 @@ coef(summary(OA.mod))
 
 ###Plot the slope/intercept of OA model on data
 ```{r echo=FALSE}
-ggplot(df2.oa, aes(x=mag.p, y=y, group=treat, shape=region))+
+ggplot(df2.oa, aes(x=mag.cent.p, y=y, group=treat, shape=region))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -336,7 +327,7 @@ df2a<-subset(df2a, region!="Mexico")
 df2.oa.r <- subset(df2a, treat=="yi.a")
 summary(df2.oa.r)
 
-OA.mod2 <- lmer(y ~ mag.p + region + (1 | study), data = df2.oa.r) 
+OA.mod2 <- rma.mv(y,v, mods = ~ mag.cent.p + region, random = ~ (1|study), data = df2.oa.r)
 
 summary(OA.mod2) # view summary output of model
 AIC(OA.mod2) # check the AIC
@@ -346,7 +337,7 @@ coef(summary(OA.mod2))
 
 ###Plot the OA slope/intercept of model on data
 ```{r echo=FALSE}
-ggplot(df2.oa.r, aes(x=mag.p, y=y, shape = region))+
+ggplot(df2.oa.r, aes(x=mag.cent.p, y=y, shape = region))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   #facet_wrap(~region)+
@@ -362,7 +353,8 @@ This is the global OW model by magnitude
 ```{r}
 df2.ow <- subset(df2, treat=="yi.w")
 summary(df2.ow)
-OW.mod <- lmer(y ~ mag.t + region + (1 | study), data = df2.ow)
+
+OW.mod <- rma.mv(y,v, mods = ~ mag.cent.t + region, random = ~ (1|study), data = df2.ow)
 
 summary(OW.mod) # view summary output of model
 AIC(OW.mod) # check the AIC
@@ -371,7 +363,7 @@ coef(summary(OW.mod))
 
 ###Plot the slope/intercept of OW model on data
 ```{r echo=FALSE}
-ggplot(df2.ow, aes(x=mag.t, y=y, group=treat, shape=region))+
+ggplot(df2.ow, aes(x=mag.cent.t, y=y, group=treat, shape=region))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -386,7 +378,7 @@ This is the region OW model by and magnitude
 df2.ow.r <- subset(df2a, treat=="yi.w")
 summary(df2.ow.r)
 
-OW.mod2 <- lmer(y ~ mag.t + region + (1 | study), data = df2.ow.r) 
+OW.mod2 <- rma.mv(y,v, mods = ~ mag.cent.t + region, random = ~ (1|study), data = df2.ow.r)
 
 summary(OW.mod2) # view summary output of model
 AIC(OW.mod2) # check the AIC
@@ -396,7 +388,7 @@ coef(summary(OW.mod2))
 
 ###Plot the OW slope/intercept of model on data
 ```{r echo=FALSE}
-ggplot(df2.ow.r, aes(x=mag.t, y=y, shape = region))+
+ggplot(df2.ow.r, aes(x=mag.cent.t, y=y, shape = region))+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   #facet_wrap(~region)+
