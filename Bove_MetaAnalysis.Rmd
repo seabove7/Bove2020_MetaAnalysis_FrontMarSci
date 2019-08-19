@@ -1,7 +1,9 @@
 ---
 title: "Bove Meta Analysis"
-output: html_document
-editor_options: 
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: console
 ---
 
@@ -10,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 This version of the script was last committed to GitHub on 25 July 2019
 ```{r start, message=FALSE}
-setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis")
+#setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis")
 df <- read.csv("effectsize_09May19.csv") 
 df <- subset(df, author !="Jury_CALC")
 df$units <- NULL
@@ -28,6 +30,7 @@ library("tidyr")
 library("plyr")
 library("lme4")
 library("tidystats")
+library(MuMIn)
 theme_set(theme_bw())
 dodge<-position_dodge(0.2)
 seed = 7 #seed to make results replicatable
@@ -39,7 +42,7 @@ seed = 7 #seed to make results replicatable
 Effect size (yi) and variance (vi). Variables with a 1 are control, 3 represent acidification, 4 are warming, and 6 is the interaction studies. 'm' is the mean calcification rate, 'n' is sample size, and 's' is the standard error of mean calcification rate per study. 
 
 ```{r ES1, echo=TRUE, warning=FALSE, message=FALSE, tidy=TRUE}
-setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis/Bove_MetaAnalysis_22Jul19_files")
+#setwd("/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis/Bove_MetaAnalysis_22Jul19_files")
 # calculate ES and variance for ocean acidification
 ES.oa<-escalc(measure="ROM", m1i=cm1, m2i=am3, sd1i=s1, sd2i=s3, n1i=n1, n2i=n3,  method="REML", data=df)
 
@@ -333,8 +336,13 @@ dev.off()
 
 ### Ocean warming
 Manipulate original df (calc) for a column of (1) treatment, (2) the resulting mean rate, (3) and the SE of the mean <- also only doing this for warming studies
+
+I've added multiple models of warming effects, including region effects and quadratic effects.  The best model seems to be the model with quadratic temperature effects, but no region effects, suggesting that some of the region effects may be the result of different temperatures.
+
 ```{r}
 head(calc)
+
+
 calc.w<-calc[,-c(15:18, 23:27)] #remove columns not needed for warming analysis
 
 completeFun <- function(data, desiredCols) {
@@ -388,30 +396,39 @@ head(calc.warm)
 ```{r}
 calc.warm$scale.temp <- scale(calc.warm$temp, center = TRUE, scale = TRUE)
 
-warm.rate.mod <- lmer(rate ~ scale.temp + (1|study) + (1|spec), weights = 1/SE, data = calc.warm) 
-summary(warm.rate.mod) # view summary output of model
-anova(warm.rate.mod)
+warm.rate.region.mod <- lmer(rate ~ scale.temp + region + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate.region2.mod <- lmer(rate ~ scale.temp + region + I(scale.temp^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate2.mod <- lmer(rate ~ scale.temp + I(scale.temp^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate.mod <- lmer(rate ~ scale.temp + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.region.mod <- lmer(rate ~ region + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
 
-warm.pred <- as.data.frame(predict(warm.rate.mod, newdata = calc.warm))
-colnames(warm.pred)[1] <- "mean"
-warm.df <- cbind(calc.warm, warm.pred)
+AICc(warm.rate.mod,warm.rate2.mod,warm.rate.region.mod,warm.rate.region2.mod,warm.region.mod)
 
-plot(warm.df$temp, warm.df$mean)
+summary(warm.rate2.mod) # view summary output of model
+confint(warm.rate2.mod , method="boot")
+
+
+
+warm.pred <- data.frame(temp=seq(26,32,length.out=100),pred=predict(warm.rate2.mod, newdata = data.frame(scale.temp=seq(min(calc.warm$scale.temp),max(calc.warm$scale.temp),length.out=100)),re.form=NA))
+#colnames(warm.pred)[1] <- "mean"
+#warm.df <- cbind(calc.warm, warm.pred)
+
+#plot(warm.df$temp, warm.df$mean)
+
 
 ```
 
 ###Plot the slope/intercept of OW model on data
 ```{r echo=FALSE}
-global_OW_calc <- 
-  ggplot(warm.df, aes(x=scale.temp, y=mean, colour=region))+
-  theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+global_OW_calc <-
+ggplot(calc.warm, aes(x=temp, y=rate, colour=region))+ geom_point(aes(size=1/SE),shape=1)+
+    theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
-  geom_abline(slope = coef(summary(warm.rate.mod))[2,1], intercept = coef(summary(warm.rate.mod))[1,1])+
-  #geom_line(data = warm.df, aes(y = mean), size = 1)+
+  geom_line(data = warm.pred, aes(y = pred), color="black",size = 1)+
   ylab("Calcification rate")+
-  xlab("Temperature")+
-  geom_point(size=4, aes(shape = region))
+  xlab("Temperature")
+
 global_OW_calc
 
 pdf("global_OW_calc_25Jul19.pdf", width=8, height=5)
@@ -422,6 +439,10 @@ dev.off()
 
 ### Ocean aciding
 Manipulate original df (calc) for a column of (1) treatment, (2) the resulting mean rate, (3) and the SE of the mean <- also only doing this for aciding studies
+
+Once again, comparing several models of the effect.  Here we still see a quadratic effect, but strangely, it seems to see minimum rate in the intermediate pco2.  The quadratic effect is small and when you look at the confidence intervals, both intervals overlap 0, suggesting that they are highly correlated, really suggesting that it is very difficult to differentiate among positive and negative values.  Some of this is backed up by the fact that the pure intercept model is a relatively good fit.
+
+
 ```{r}
 calc.a<-calc[,-c(19:27)] #remove columns not needed for aciding analysis
 
@@ -474,13 +495,45 @@ calc.acid$cent.temp <- rep("NA", 66)
 ```{r}
 calc.acid$scale.pco2 <- scale(calc.acid$pco2, center = TRUE, scale = TRUE)
 
-#acid.rate.mod <- lmer(rate ~ scale.pco2  + I(scale.pco2^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.acid) 
-acid.rate.mod <- lmer(rate ~ scale.pco2 + (1|spec), weights = 1/SE, data = calc.acid) 
+acid.rate2.mod <- lmer(rate ~ scale.pco2  + I(scale.pco2^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.acid,REML=F) 
+
+acid.rate.mod <- lmer(rate ~ scale.pco2 + (1|spec), weights = 1/SE, data = calc.acid,REML=F) 
 summary(acid.rate.mod) # view summary output of model
+
+acid.rate2.region.mod <- lmer(rate ~ scale.pco2  + region+ I(scale.pco2^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.acid,REML=F) 
+
+acid.rate.region.mod <- lmer(rate ~ scale.pco2 + region+(1|spec), weights = 1/SE, data = calc.acid,REML=F) 
+summary(acid.rate.mod) # view summary output of model
+
+acid.region.mod <- lmer(rate ~ region + (1|study) + (1|spec), weights = 1/SE, data = calc.acid,REML=F) 
+
+acid.intercept.mod <-lmer(rate ~ (1|study) + (1|spec), weights = 1/SE, data = calc.acid,REML=F) 
+
+AICc(acid.intercept.mod,acid.rate.mod,acid.rate2.mod,acid.rate.region.mod,acid.rate2.region.mod,acid.region.mod)
 
 acid.pred <- as.data.frame(predict(acid.rate.mod, newdata = calc.acid))
 colnames(acid.pred)[1] <- "mean"
 acid.df <- cbind(calc.acid, acid.pred)
+
+acid.rate2.mod <- lmer(rate ~ scale.pco2  + I(scale.pco2^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.acid)
+confint(acid.rate2.mod,method="boot")
+
+```
+
+```{r}
+
+acid.pred <- data.frame(pco2=seq(min(calc.acid$pco2),max(calc.acid$pco2),length.out=100),pred=predict(acid.rate2.mod, newdata = data.frame(scale.pco2=seq(min(calc.acid$scale.pco2),max(calc.acid$scale.pco2),length.out=100)),re.form=NA))
+
+global_OA_calc <-
+ggplot(acid.df, aes(x=pco2, y=rate, colour=region))+ geom_point(aes(size=1/SE),shape=1)+
+    theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  geom_line(data = acid.pred, aes(y = pred), color="black",size = 1)+
+  ylab("Calcification rate")+
+  xlab("PCO2")
+
+global_OA_calc
 
 ```
 
