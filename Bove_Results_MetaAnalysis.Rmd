@@ -1,0 +1,736 @@
+---
+title: "Results: Meta Analysis"
+output:
+  #pdf_document: default
+  html_document: 
+      theme: cerulean
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#htmltools::includeHTML("Bove_Results_MetaAnalysis.html")
+```
+This version of the script was last committed to GitHub on 06 November 2019
+
+
+<span style="color:red">*Quick comment, I removed a single study because (Reneger et al) because it was way lower than the others. Happy to talk more about it (I think it was about -30)*</span>
+```{r start, message=FALSE, warning=FALSE, echo = FALSE}
+df <- read.csv("effectsize_09May19.csv") 
+df <- subset(df, author !="Jury_CALC")
+df$units <- NULL
+#calc <- read.csv("effectsize_23July19.csv") 
+calc <- read.csv("effectsize_arag_05Nov19.csv")  #for aragonite
+calc <- subset(calc, units !="N")
+calc$num <- 1:nrow(calc) # just helpful for the data manipulation
+calc$units <- NULL
+
+df$cite <- paste(df$author, df$year, sep = " ")
+
+df <- subset(df, author != "Reneger")
+
+library("metafor")
+library("MAd")
+library("ggplot2")
+library("tidyr")
+library("plyr")
+library("lme4")
+library("tidystats")
+library("MuMIn")
+library("sjPlot")
+library("sjmisc")
+library("sjlabelled")
+library("kableExtra")
+library("cowplot")
+#webshot::install_phantomjs()
+
+date <- Sys.Date() #For saving with the crrent date
+theme_set(theme_bw())
+dodge<-position_dodge(0.2)
+seed = 7 #seed to make results replicatable
+```
+
+####(a.)	Overall calcification response
+In total, eleven studies met the standards of this meta-analysis, comprising the response of thirteen Caribbean reef-building coral species collected from five different countries (**figure 1**; **table 1**). Of the studies selected, only three performed fully factorial ocean acidification and warming experiments, and one performed two independent acidification and warming experiments. The most studied coral species from the Caribbean region were *Porites astreoides* (5 studies), *Acropora cervicornis* (4 studies), and *Siderastrea siderea* (4 studies). Finally, Florida and Belize were the two most-studied regions throughout the wider Caribbean in regards to coral calcification under ocean acidification and warming.
+
+Meta-analysis of the dataset revealed that calcification rate was negatively impacted by both ocean warming and ocean acidification (**figure 2**). Because the 95% confidence interval of the combination of ocean warming and acidification treatment overlapped zero, the interaction was considered additive and non-significant (**figure 2**; **table 2**). 
+
+
+<br/>
+
+![**Figure 1.** Map of coral specimen collection sites from included studies. Experimental study is represented by colour and treatments are represented by shape: acidification only (circle), warming only (triangle), and the combination of acidification and warming (square). The lower left insert displays close-up of the Southern Belize collection sites and the upper right insert displays the Florida Keys collection sites.](/Users/Colleen/Dropbox/Boston_Experiment/Manuscript3_metaanalysis/Code/Bove_MetaAnalysis/06Sep19 Update/FullMap_25April19.png)
+
+```{r ES1, echo=FALSE, warning=FALSE, message=FALSE, tidy=TRUE}
+# calculate ES and variance for ocean acidification
+ES.oa<-escalc(measure="SMDH", m1i=cm1, m2i=am3, sd1i=s1, sd2i=s3, n1i=n1, n2i=n3, data=df)
+
+# calculate ES and variance ES for ocean warming
+ES.ow<-escalc(measure="SMDH", m1i=cm1, m2i=wm4, sd1i=s1, sd2i=s4, n1i=n1, n2i=n4, data=df)
+
+#create DF of calculated variables of OA
+acid<-data.frame("cm1"=ES.oa$cm1,"yi.a"=ES.oa$yi,"vi.a"=ES.oa$vi)
+
+# merge together warming and acid DF 
+ES.full<-merge(ES.ow,acid,by="cm1")
+ES.full<-rename(ES.full,c("yi"="yi.w","vi"="vi.w"))
+ES.full<-ES.full[order(ES.full$cite), ]
+ES.full$yi.w<-(ES.full$yi.w)*-1
+ES.full$yi.a<-(ES.full$yi.a)*-1
+```
+
+```{r sd, echo=FALSE}
+# calculate sd for all 
+ES.full$sd1<-ES.full$s1*sqrt(ES.full$n1)
+ES.full$sd3<-ES.full$s3*sqrt(ES.full$n3)
+ES.full$sd4<-ES.full$s4*sqrt(ES.full$n4)
+ES.full$sd6<-ES.full$s6*sqrt(ES.full$n6)
+
+# calculate S for all treatments
+ES.full$Sa<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd3^2/ES.full$n3))
+ES.full$Sw<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd4^2/ES.full$n4))
+ES.full$Si<-sqrt((ES.full$sd1^2/ES.full$n1)+(ES.full$sd6^2/ES.full$n6))
+```
+
+```{r ESinter, echo=FALSE}
+# calculate ES using Harvey et al equations for acidification, warming, and interaction studies
+ES.full$lnRRa<-((ES.full$am3-ES.full$cm1)/ES.full$Sa)
+ES.full$lnRRt<-((ES.full$wm4-ES.full$cm1)/ES.full$Sw)
+ES.full$yi.i<-((ES.full$m6-ES.full$wm4)-(ES.full$am3-ES.full$cm1))/(2*ES.full$Si)
+
+# calculate V for interaction studies ONLY
+ES.full$vi.i<-(1/ES.full$n1)+(1/ES.full$n3)+(1/ES.full$n4)+(1/ES.full$n6)+((ES.full$yi.i^2)/(2*(ES.full$n1+ES.full$n3+ES.full$n4+ES.full$n6)))
+```
+
+```{r writeCSV, echo=FALSE}
+csvFileName <- paste("ES.full", date, sep="_") 
+csvFileName <- paste(csvFileName, ".csv", sep="")
+
+write.csv(ES.full, file=csvFileName) 
+```
+
+```{r start2, echo=FALSE}
+# read in the saved CSV and then removed any unneeded columns
+df<-read.csv(csvFileName)
+df<-df[,-c(2, 12, 13, 16:18, 20:22, 24:26, 34:42)] #remove any unneeded columns
+
+```
+
+```{r datamanip, echo=FALSE}
+#subset df for variance (v) values only as new df
+df2b<-subset(df, select=c(X,vi.i,vi.a,vi.w))
+
+#subset df to remove only variance (v) values as another new df
+df.m <-subset(df, select=-c(vi.i,vi.a,vi.w))
+
+# this creates df with treat and V as column headers in long format
+df2b<-gather(df2b, treat, v,vi.i:vi.w)
+
+#substitute y for v for merge later
+df2b$treat<-gsub('v','y', df2b$treat)
+
+#creates another long format df with treat and Y as headers (of Y values)
+df.m <-gather(df.m, treat, y,yi.w:yi.i)
+df.m $treat<-as.factor(df.m $treat)
+
+#merge two df into one
+df2<-merge(df.m, df2b, by=c("X", "treat"))
+
+#remove any NAs
+#df2<-na.omit(df2)
+df2$study <- paste(df2$author, df2$year, sep = "_")
+df2$X<-NULL
+```
+
+```{r, echo=FALSE}
+df2$mag.p <- df2$a.pco2 - df2$c.pco2
+df2$mag.t <- df2$w.temp - df2$c.temp
+
+df2$mag.cent.p <- df2$mag.p - 127 #make a centered around 0 column
+df2$mag.cent.t <- df2$mag.t - 1.0 #make a centered around 0 column
+```
+
+```{r rma, echo=FALSE, warning=FALSE}
+# subset data by treatment
+OW<-subset(df2, treat=="yi.w")
+OA<-subset(df2, treat=="yi.a")
+IN<-subset(df2, treat=="yi.i")
+
+# fit model to each treatment
+ow<-rma(y,v,data=OW)
+oa<-rma(y,v, data=OA)
+both<-rma(y,v,data=IN)
+```
+
+```{r fullModel, echo=FALSE}
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
+
+df2 <- completeFun(df2, "y")
+```
+
+```{r full model fit, warning=FALSE, echo=FALSE}
+global.mod <- rma.mv(y,v, mods = ~ treat, random = list(~ (1|study), ~ (1|species)), data = df2) 
+
+preds <- as.data.frame(predict(global.mod, newdata = df2))[,c(1,3:4)] # pull the mean and CI with the predict function
+global.out <- cbind(df2, preds) # add columns to existing df for global output
+```
+
+<br/>
+
+```{r table 1 of studies, echo=FALSE}
+
+meta_tab <- read.csv("Table1_13Sep19.csv")
+
+meta_tab <- subset(meta_tab, Study != "Reneger et al. 2005")
+# Here I need to make table 1 
+
+table1 <- kable(meta_tab, booktabs = T, caption = "Table 1. Included Experimental Studies") %>%
+  kable_styling(font_size = 10, full_width = F) %>% 
+  column_spec(5, italic = T)
+table1
+
+#save_kable(table1, "Table1_Studies_26Sep19.pdf")
+
+```
+***
+<br/><br/><br/><br/>
+
+<div style= "float:right;position: relative; top: -80px;">
+```{r plot full model, echo=FALSE, fig.height = 3.5, fig.width = 4.5, warning=FALSE}
+global.out$treat <- factor(global.out$treat, levels = c("yi.a","yi.w","yi.i"))
+global.out$wt <- 1/(global.out$v)
+
+global_CI <- 
+  ggplot(global.out)+
+  theme(panel.grid.major=element_blank(), legend.position="none", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  ylab("Mean effect size (SMD)")+
+  xlab("")+
+  #ggtitle("Figure 2. Global standardized mean difference by treatment")+
+  scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "combination"))+
+  geom_hline(yintercept=0, linetype=2, colour="black")+
+  geom_point(aes(x = treat, y = y, size = wt),  colour="grey", data = global.out, alpha = 0.5, position=position_jitter(width=0.1))+
+  #geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
+  geom_linerange(aes(x = treat, ymin=ci.lb, ymax=ci.ub), size=0.8)+
+  #ylim(-1.6,0.6)+
+  geom_point(aes(x = treat, y = pred), size=10, shape=95, colour="black")
+
+global_CI
+
+#gCI <- paste("global_CI", date, sep="_") 
+#gCI <- paste(gCI, ".pdf", sep="")
+#
+#pdf(gCI, width=6, height=4)
+#global_CI
+#dev.off()
+```
+</div>
+```{r save global output, echo=FALSE, results = 'hide'}
+
+pdf("Figure2_GlobalCI_26Sep19.pdf", width = 5, height = 3.5)
+global_CI
+dev.off()
+
+```
+
+
+**Figure 2.**
+Mean effect (standardized mean difference) and ±95% confidence interval of ocean acidification, warming, and combination of acidification and warming on calcification rate for all studies in the meta-analysis. The zero line indicates no effect, and significance is denoted when the ±95% confidence interval does not overlap zero. The size of the point is determined by the weight of the corresponding study (1/SE). 
+
+
+<br/><br/><br/><br/><br/><br/><br/>
+```{r global model output table, echo=FALSE}
+
+tidy.rma <- function(x, ...) {
+  with(
+    x,
+    data.frame(
+      estimate = b,
+      std.error = se,
+      z.value = zval,
+      p.value = pval,
+      conf.low = ci.lb,
+      conf.high = ci.ub
+    )
+  )
+}
+tidy.rma.Q <- function(x, ...) {
+  with(
+    x,
+    data.frame(
+      QE = QE,
+      p.value = QEp,
+      QM = QM,
+       p.value = QMp
+    )
+  )
+}
+
+global.Q <- tidy.rma.Q(global.mod)
+global.Q <- data.frame(t(global.Q))
+row.names(global.Q) <- c("QE", "p value", "QM", " p value")
+colnames(global.Q) <- "estimate"
+global.Q$std.error <- rep("", 4)
+global.Q$z.value <- rep("", 4)
+global.Q$p.value <- rep("", 4)
+global.Q$conf.low <- rep("", 4)
+global.Q$conf.high <- rep("", 4)
+
+
+global.mod.tab <- tidy.rma(global.mod)
+row.names(global.mod.tab) <- c("acidification", "combination", "warming")
+global.mod.tab$std.error <- round(global.mod.tab$std.error, 3)
+global.mod.tab$z.value <- round(global.mod.tab$z.value, 3)
+global.mod.tab$p.value <- round(global.mod.tab$p.value, 3)
+global.mod.tab$conf.low <- round(global.mod.tab$conf.low, 3)
+global.mod.tab$conf.high <- round(global.mod.tab$conf.high, 3)
+global.mod.tab <- rbind(global.mod.tab, global.Q)
+
+global.mod.tab <- global.mod.tab[,1:4]
+
+table2 <- kable(global.mod.tab, digits = 2, caption = "Table 2. Gloabl Model Output") %>%
+  kable_styling(font_size = 14, full_width = F) %>% 
+  pack_rows("Model Results", 1, 3) %>%
+  pack_rows("Variance Components", 4, 7)
+table2
+
+#save_kable(table2, "Table2_GlobalMod_26Sep19.pdf")
+
+```
+
+<br/>
+
+####(b.)	Calcification response of Florida Keys versus Southern Belize coral communities
+Ocean acidification and warming significantly reduced experimental calcification rates of corals from  the Florida Keys. Additionally, the combination of ocean acidification and warming resulted in a synergystic calcifciation rate reduction (**figure 3a**; **table 3**). Conversely, corals from Belize only exhibited significantly reduced calcification under ocean warming (**figure 3b**; **table 3**). 
+
+<br/><br/><br/><br/>
+
+```{r region model fit, warning=FALSE, echo=FALSE}
+df2a<-subset(df2, region!="Curacao")
+df2a<-subset(df2a, region!="Little Cayman")
+df2a<-subset(df2a, region!="Mexico")
+
+region.mod <- rma.mv(y,v, mods = ~ treat * region, random = list(~ (1|study), ~ (1|species)), data = df2a)
+
+preds2 <- as.data.frame(predict(region.mod, newdata = df2))[,c(1,3:4)] # pull the mean and CI with the predict function
+region.out <- cbind(df2a, preds2) # add columns to existing df for global output
+```
+
+<div style= "float:right;position: relative; top: -80px;">
+```{r plot region model, echo=FALSE, warning=FALSE, fig.height = 3.7, fig.width = 7}
+
+region.out$treat <- factor(region.out$treat, levels = c("yi.a","yi.w","yi.i"))
+region.out$wt <- 1/(region.out$v)
+
+region_CI <- ggplot(region.out)+
+  theme(panel.grid.major=element_blank(), legend.position="none", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  ylab("Mean effect size (SMD)")+
+  xlab("")+
+  scale_x_discrete(labels=c("yi.a" = "acidification", "yi.w" = "warming", "yi.i" = "combination"))+
+  geom_hline(yintercept=0, linetype=2, colour="black")+
+  geom_point(aes(x = treat, y = y, size = wt),  colour="grey", data = region.out, alpha = 0.5, position=position_jitter(width=0.1))+
+  #ggtitle("Figure 3.Standardized mean difference by treatment for Florida Keys and Southern Belize")+
+  #geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
+  geom_linerange(aes(x = treat, ymin=ci.lb, ymax=ci.ub), size=0.8)+
+  geom_point(aes(x = treat, y = pred), size=10, shape=95, colour="black")+
+  facet_wrap(~region)
+region_CI
+
+```
+
+</div>
+
+**Figure 3.** Mean effect (standardized mean difference) and ±95% confidence interval of ocean acidification, warming, and interaction of acidification and warming on calcification rate for (*a*) Florida Keys and (*b*) Southern Belize. The zero line indicates no effect, and significance is denoted when the ±95% confidence interval does not overlap zero. The size of the point is determined by the weight of the corresponding study (1/SE). 
+
+```{r, regional model output table, echo=FALSE}
+
+regional.Q <- tidy.rma.Q(region.mod)
+regional.Q <- data.frame(t(regional.Q))
+row.names(regional.Q) <- c("QE", "p value", "QM", " p value")
+colnames(regional.Q) <- "estimate"
+regional.Q$std.error <- rep("", 4)
+regional.Q$z.value <- rep("", 4)
+regional.Q$p.value <- rep("", 4)
+regional.Q$conf.low <- rep("", 4)
+regional.Q$conf.high <- rep("", 4)
+
+
+region.mod.tab <- tidy.rma(region.mod)
+row.names(region.mod.tab) <- c("acidification", "combination", "warming","acidification ", "combination ", "warming ")
+region.mod.tab$std.error <- round(region.mod.tab$std.error, 3)
+region.mod.tab$z.value <- round(region.mod.tab$z.value, 3)
+region.mod.tab$p.value <- round(region.mod.tab$p.value, 3)
+region.mod.tab$conf.low <- round(region.mod.tab$conf.low, 3)
+region.mod.tab$conf.high <- round(region.mod.tab$conf.high, 3)
+region.mod.tab <- rbind(region.mod.tab, regional.Q)
+
+region.mod.tab <- region.mod.tab[,1:4]
+
+table3 <- kable(region.mod.tab, digits = 4, booktabs = T, caption = "Table 3. Regional Model Output") %>%
+  kable_styling(font_size = 14, full_width = F) %>% 
+  pack_rows("Belize", 1, 3) %>%
+  pack_rows("Florida", 4, 6) %>%
+  pack_rows("Variance Components", 7, 10)
+table3
+
+#save_kable(table3, "Table3_RegionalMod_26Sep19.pdf")
+```
+
+```{r save regional output, echo=FALSE, results = 'hide'}
+
+pdf("Figure3_RegionalCI_26Sep19.pdf", width = 8, height = 3.5)
+region_CI
+dev.off()
+
+```
+
+
+```{r, echo=FALSE}
+calc.w<-calc[,-c(15:18, 23:27)] #remove columns not needed for warming analysis
+
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+} # remove and NA columns from warming column
+calc.w <- completeFun(calc.w, "wm4")
+
+#subset calc for calcication rates
+calc.b<-subset(calc.w, select=c(num, cm1, wm4))
+# create df with treat and rate as column headers in long format
+calc.b<-gather(calc.b, treat, rate, cm1:wm4)
+# rename for useful treatment names
+calc.b$treat<-gsub('cm1','control', calc.b$treat)
+calc.b$treat<-gsub('wm4','warm', calc.b$treat)
+
+#subset calc for SE
+calc.c<-subset(calc.w, select=c(num, s1, s4))
+# create df with treat and SE as column headers in long format
+calc.c<-gather(calc.c, treat, SE, s1:s4)
+# rename for useful treatment names
+calc.c$treat<-gsub('s1','control', calc.c$treat)
+calc.c$treat<-gsub('s4','warm', calc.c$treat)
+
+#subset calc to remove only columns from above
+calc.d <-subset(calc.w, select=-c(s1 ,s4 ,cm1, wm4, c.pco2, n1, n4))
+# this creates df with treat and V as column headers in long format
+calc.d<-gather(calc.d, treat, temp, c.temp:w.temp)
+# rename for useful treatment names
+calc.d$treat<-gsub('c.temp','control', calc.d$treat)
+calc.d$treat<-gsub('w.temp','warm', calc.d$treat)
+
+#merge dfs into one, final warming
+calc.m<-merge(calc.d, calc.b, by=c("num", "treat"))
+calc.warm<-merge(calc.m, calc.c, by=c("num", "treat"))
+
+# create column for weight
+calc.warm$wt <- 1 / calc.warm$SE
+
+# create study column
+calc.warm$study <- paste(calc.warm$author, calc.warm$year, sep = "_")
+
+# center temps
+calc.warm$cent.temp <- calc.warm$temp - mean(calc.warm$temp)
+calc.warm$cent.pco2 <- rep("NA", 66)
+```
+
+```{r, echo=FALSE, message=FALSE}
+calc.warm$scale.temp <- scale(calc.warm$temp, center = TRUE, scale = TRUE)
+
+warm.rate.region.mod <- lmer(rate ~ scale.temp + region + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate.region2.mod <- lmer(rate ~ scale.temp + region + I(scale.temp^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate2.mod <- lmer(rate ~ scale.temp + I(scale.temp^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate.mod <- lmer(rate ~ scale.temp + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.region.mod <- lmer(rate ~ region + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+
+AICc(warm.rate.mod,warm.rate2.mod,warm.rate.region.mod,warm.rate.region2.mod,warm.region.mod)
+
+#summary(warm.rate2.mod) # view summary output of model
+#confint(warm.rate2.mod , method="boot")
+
+warm.pred <- data.frame(temp=seq(26,32,length.out=100),pred=predict(warm.rate2.mod, newdata = data.frame(scale.temp=seq(min(calc.warm$scale.temp),max(calc.warm$scale.temp),length.out=100)),re.form=NA))
+```
+
+<br/>
+
+####(c.)	Temperature impact on  calcification rates across studies
+Secondary analysis of mean calcification rates (mg/cm2/day) against treatment temperature across all studies revealed a parabolic response to temperature (**figure 4**; **table 4**). The parabolic trend was a result of treatment temperature rather than region, suggesting regional differences identified in the meta-analysis was a result of experimental temperatures selected. 
+
+<br/><br/><br/><br/><br/>
+
+<div style= "float:right;position: relative; top: -80px;">
+
+```{r echo=FALSE}
+
+global_OW_calc <-
+ggplot(calc.warm, aes(x=temp, y=rate))+
+  geom_point(aes(size=1/SE, shape=region, fill=region), colour="black")+
+    theme(panel.grid.major=element_blank(), legend.position="right", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  scale_shape_manual("Region", values = c(21,22,24))+
+  scale_fill_manual("Region", values = c("#5ab4ac", "#d8b365", "#f5f5f5"))+
+  geom_line(data = warm.pred, aes(y = pred), color="black",size = 1)+
+  ylab(bquote('Calcification rate (mg' ~cm^-2* ~day^-1*')'))+
+  xlab(bquote('Temperature ('*degree*C*')'))
+global_OW_calc
+
+```
+
+```{r save warming calc, echo=FALSE, results = 'hide'}
+
+pdf("Figure4_CalcWarm_26Sep19.pdf", width = 7, height = 4)
+global_OW_calc
+dev.off()
+
+```
+
+</div>
+
+**Figure 4.** Mean calcification rate (mg/cm2/day) of corals from each study by treatment temperature (C) with linear mixed effects model quadratic fit. Shape of each point denotes study region and size of shape represents the weight (1/SE) of study.
+
+[ Model: rate ~ temperature + temperature^2 + (1  | study) + (1 | spec), weights = 1 / SE ]
+
+```{r lmer warming output, echo=FALSE, fig.align='center' }
+tab_model(warm.rate2.mod, show.r2 = FALSE, show.aicc = TRUE, title = "Table 4. Mixed-effects model output of effects of temperature on calcification rates")
+```
+
+<br/><br/>
+
+#### Now we look at OA in similar way
+
+```{r, echo=FALSE}
+calc.a<-calc[,-c(19:27)] #remove columns not needed for acid analysis
+
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+} # remove and NA columns from acid column
+calc.a <- completeFun(calc.a, "am3")
+
+#subset calc for calcication rates
+calc.b<-subset(calc.a, select=c(num, cm1, am3))
+# create df with treat and rate as column headers in long format
+calc.b<-gather(calc.b, treat, rate, cm1:am3)
+# rename for useful treatment names
+calc.b$treat<-gsub('cm1','control', calc.b$treat)
+calc.b$treat<-gsub('am3','acid', calc.b$treat)
+
+#subset calc for SE
+calc.c<-subset(calc.a, select=c(num, s1, s3))
+# create df with treat and SE as column headers in long format
+calc.c<-gather(calc.c, treat, SE, s1:s3)
+# rename for useful treatment names
+calc.c$treat<-gsub('s1','control', calc.c$treat)
+calc.c$treat<-gsub('s3','acid', calc.c$treat)
+
+#subset calc to remove only columns from above
+calc.d <-subset(calc.a, select=-c(s1 ,s3 ,cm1, am3, c.temp, n1, n3))
+# this creates df with treat and V as column headers in long format
+calc.d<-gather(calc.d, treat, acid, c.pco2:a.pco2)
+# rename for useful treatment names
+calc.d$treat<-gsub('c.pco2','control', calc.d$treat)
+calc.d$treat<-gsub('a.pco2','acid', calc.d$treat)
+
+#merge dfs into one, final acid
+calc.m<-merge(calc.d, calc.b, by=c("num", "treat"))
+calc.arag<-merge(calc.m, calc.c, by=c("num", "treat"))
+
+# create column for weight
+calc.arag$wt <- 1 / calc.arag$SE
+
+# create study column
+calc.arag$study <- paste(calc.arag$author, calc.arag$year, sep = "_")
+
+# center temps
+calc.arag$cent.pco2 <- calc.arag$acid - mean(calc.arag$acid)
+#calc.arag$cent.pco2 <- rep("NA", 66)
+```
+
+```{r, echo=FALSE, message=FALSE}
+calc.arag$scale.arag <- scale(calc.arag$acid, center = TRUE, scale = TRUE)
+
+acid.rate.region.mod <- lmer(rate ~ scale.arag + region + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.rate.region2.mod <- lmer(rate ~ scale.arag + region + I(scale.arag^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.rate.mod <- lmer(rate ~ scale.arag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.region.mod <- lmer(rate ~ region + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+
+AICc(acid.rate.mod,acid.rate2.mod,acid.rate.region.mod,acid.rate.region2.mod,acid.region.mod)
+
+summary(acid.rate2.mod) # view summary output of model
+confint(acid.rate2.mod , method="boot")
+
+acid.pred <- data.frame(acid=seq(1.7,5.8,length.out=100),pred=predict(acid.rate2.mod, newdata = data.frame(scale.arag=seq(min(calc.arag$scale.arag),max(calc.arag$scale.arag),length.out=100)),re.form=NA))
+```
+
+  
+```{r echo=FALSE}
+
+global_OA_calc <-
+  ggplot(calc.arag, aes(x=acid, y=rate))+
+  geom_point(aes(size=1/SE, shape=region, fill=region), colour="black")+
+  theme(panel.grid.major=element_blank(), legend.position="right", panel.grid.minor=element_blank(), panel.background=element_blank())+
+  theme(axis.line=element_line(color="black"))+
+  theme(legend.key=element_blank())+
+  scale_shape_manual("Region", values = c(21,22,24))+
+  scale_fill_manual("Region", values = c("#5ab4ac", "#d8b365", "#f5f5f5"))+
+  geom_line(data = acid.pred, aes(y = pred), color="black",size = 1)+
+  ylab(bquote('Calcification rate (mg' ~cm^-2* ~day^-1*')'))+
+  xlab(bquote('Aragonite Saturation State'))
+global_OA_calc
+
+```
+
+```{r save acid calc, echo=FALSE, results = 'hide'}
+
+pdf("Figure4_CalcAcid_06Nov19.pdf", width = 7, height = 4)
+global_OA_calc
+dev.off()
+
+```
+
+
+
+
+***
+
+### Supplemental Results
+<br/>
+
+#### I ) Ocean acidification forest and funnel plots
+**S1.** Forest plot of ocean acidification study results.
+```{r oa, echo=FALSE, fig.height = 11, fig.width = 11, fig.align = "center"}
+
+forest(oa, slab=paste(OA$cite, OA$spec, OA$site, sep=" - "), order=order(OA$cite))
+
+```
+
+**S2.** Funnel plot of ocean acidification study results.
+```{r oa2, echo=FALSE, fig.align = "center"}
+
+funnel(oa, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend=TRUE)
+
+```
+
+```{r save oa forest, echo=FALSE, results = 'hide'}
+
+pdf("FigureS1_OAforest_26Sep19.pdf", width = 11, height = 12)
+forest(oa, slab=paste(OA$cite, OA$spec, OA$site, sep=" - "), order=order(OA$cite))
+dev.off()
+
+pdf("FigureS2_OAfunnel_26Sep19.pdf", width = 7, height = 6)
+funnel(oa, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend=TRUE)
+dev.off()
+
+```
+
+#### II ) Ocean warming forest and funnel plots
+**S3.** Forest plot of ocean warming study results.
+```{r ow, echo=FALSE, fig.height = 11, fig.width = 9, fig.align = "center"}
+
+forest(ow, slab=paste(OW$cite, OW$spec, OW$site, sep=" - "), order=order(OW$cite))
+
+```
+
+**S4.** Funnel plot of ocean warming study results.
+```{r ow2, echo=FALSE, fig.height = 7, fig.width = 9, fig.align = "center"}
+
+funnel(ow, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend=TRUE)
+
+```
+
+```{r save ow, echo=FALSE, results = 'hide'}
+
+pdf("FigureS3_OWforest_26Sep19.pdf", width = 9, height = 10)
+forest(ow, slab=paste(OW$cite, OW$spec, OW$site, sep=" - "), order=order(OW$cite))
+dev.off()
+
+pdf("FigureS4_OWfunnel_26Sep19.pdf", width = 7, height = 5)
+funnel(ow, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend="topleft")
+dev.off()
+
+```
+
+#### III ) Combined ocean acidification and warming forest and funnel plots
+**S5.** Forest plot of combination of ocean acidification and warming study results.
+```{r both, echo=FALSE, fig.height = 9, fig.width = 9, fig.align = "center"}
+
+forest(both, slab=paste(IN$cite, IN$spec, IN$site, sep=" - "), order=order(IN$cite))
+
+
+```
+
+**S6.** Funnel plot of combination of ocean acidification and warming study results.
+```{r both2, echo=FALSE, fig.align = "center"}
+
+funnel(both, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend=TRUE)
+
+```
+
+```{r save both, echo=FALSE, results = 'hide'}
+
+pdf("FigureS5_bothforest_26Sep19.pdf", width = 9, height = 8)
+forest(both, slab=paste(IN$cite, IN$spec, IN$site, sep=" - "), order=order(IN$cite))
+dev.off()
+
+pdf("FigureS6_bothfunnel_26Sep19.pdf", width = 7, height = 6)
+funnel(both, level=c(90, 95, 99), shade=c("white", "gray55", "gray75"), legend=TRUE)
+dev.off()
+
+```
+
+```{r region1, include=FALSE}
+
+df2a<-subset(df2, region!="Curacao")
+df2a<-subset(df2a, region!="Little Cayman")
+df2a<-subset(df2a, region!="Mexico")
+
+# OA subset
+OA2<-subset(df2a, treat=="yi.a")
+
+# OW subset
+OW2<-subset(df2a, treat=="yi.w")
+
+# Interaction subset
+IN2<-subset(df2a, treat=="yi.i")
+
+```
+
+```{r regionRMA, warning=FALSE, include=FALSE}
+
+# acidification by warming
+oa.r<-rma(y,v,mods=~region, data=OA2)
+
+# warming by regions
+ow.r<-rma(y,v,mods=~region, data=OW2)
+
+# interactions by region
+in.r<-rma(y,v,mods=~region, data=IN2)
+
+```
+
+
+```{r OAregion, echo=FALSE, include=FALSE}
+
+oa.r
+
+```
+
+```{r OWregion, echo=FALSE, include=FALSE}
+
+ow.r
+
+```
+
+```{r intregion, echo=FALSE, include=FALSE}
+
+in.r
+
+```
