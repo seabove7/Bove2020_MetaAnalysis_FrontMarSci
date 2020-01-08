@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #htmltools::includeHTML("Bove_Results_MetaAnalysis.html")
 ```
-*The following script and analyses were written by Colleen Bove and James Umbanhowar. This version of the script was last committed to GitHub on 23 December 2019*
+*The following script and analyses were written by Colleen Bove and James Umbanhowar. This version of the script was last committed to GitHub on 08 January 2020*
 
 In total, eleven studies met the standards of this meta-analysis, including the responses of thirteen Caribbean coral species collected from five different countries across the wider Caribbean (**Figure 1 and Supplementary Table S1**). Of the studies selected, only four performed fully factorial ocean acidification and warming experiments, and one performed two independent acidification and warming experiments. The most studied coral species from the Caribbean region were *Porites astreoides* (5 studies), *Acropora cervicornis* (4 studies), and *Siderastrea siderea* (4 studies). Finally, the Florida Keys and Belize were the two most-studied regions within the wider Caribbean fitting the criteria of this meta-analysis.
 
@@ -50,6 +50,8 @@ seed = 7 #seed to make results replicatable
 ```{r start, message=FALSE, warning=FALSE, echo = FALSE}
 
 meta_tab <- read.csv("Table1_30Dec19.csv")
+meta_tab$irradiance <- gsub("ND", NA, meta_tab$irradiance)
+meta_tab$Feeding.1 <- gsub("ND", NA, meta_tab$Feeding.1)
 meta_tab2 <- subset(meta_tab, Study != "Reneger et al. 2005")
 meta_tab <- meta_tab2[, -c(3:13)]
 meta_tab2 <- meta_tab2[, c(2:13, 20)]
@@ -248,10 +250,9 @@ g.mod2 <- rma.mv(y,v, mods = ~ treat * mag + days + irradiance + Feeding, random
 g.mod3 <- rma.mv(y,v, mods = ~ treat * mag + days + irradiance, random = list(~ (1|study), ~ (1|species)), data = df2) 
 g.mod4 <- rma.mv(y,v, mods = ~ treat * mag, random = list(~ (1|study), ~ (1|species)), data = df2) 
 
-g.mod5 <- rma.mv(y,v, mods = ~ treat * mag + irradiance + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2) # using this model
-g.mod6 <- rma.mv(y,v, mods = ~ treat * mag + days + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2) # using this model
-g.mod7 <- rma.mv(y,v, mods = ~ treat * mag + days + irradiance, random = list(~ (1|study), ~ (1|species)), data = df2) # using this model
-
+g.mod5 <- rma.mv(y,v, mods = ~ treat * mag + irradiance + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2) 
+g.mod6 <- rma.mv(y,v, mods = ~ treat * mag + days + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2) 
+g.mod7 <- rma.mv(y,v, mods = ~ treat * mag + days + irradiance, random = list(~ (1|study), ~ (1|species)), data = df2) 
 
 g.mod.d <- rma.mv(y,v, mods = ~ treat * mag + days, random = list(~ (1|study), ~ (1|species)), data = df2)
 g.mod.i <- rma.mv(y,v, mods = ~ treat * mag + irradiance, random = list(~ (1|study), ~ (1|species)), data = df2)
@@ -266,19 +267,27 @@ g.mod.c <- rma.mv(y,v, mods = ~ treat * mag + calc_method, random = list(~ (1|st
 (model: mods = ~ treat * mag + days + irradiance + Feeding, random = list(~ (1|study), ~ (1|species))
 ```{r full model fit,  warning=FALSE}
 
-#global.mod <- rma.mv(y,v, mods = ~ treat , random = list(~ (1|study), ~ (1|species)), data = df2) 
-
-global.mod <- rma.mv(y,v, mods = ~ treat * mag + days + irradiance + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2)
+global.mod <- rma.mv(y,v, mods = ~ treat * mag , random = list(~ (1|study), ~ (1|species)), data = df2) 
 
 preds <- as.data.frame(predict(global.mod, newdata = df2))[,c(1,3:4)] # pull the mean and CI with the predict function
 global.out <- cbind(df2, preds) # add columns to existing df for global output
 
 global.mod
 
-
 ```
 
 <br/><br/><br/>
+
+```{r global mean estimation, include=FALSE}
+
+pred <- summarySE(measurevar = "pred", groupvars = "treat", data = global.out)[,c(1,3)]
+lb <- summarySE(measurevar = "ci.lb", groupvars = "treat", data = global.out)[,3]
+up <- summarySE(measurevar = "ci.ub", groupvars = "treat", data = global.out)[,3]
+
+pred.global <- cbind(pred, lb, up)
+
+```
+
 
 ```{r plot full model,  fig.height = 3.5, fig.width = 4.5, warning=FALSE, fig.align="center"}
 
@@ -286,7 +295,7 @@ global.out$treat <- factor(global.out$treat, levels = c("yi.a","yi.w","yi.i"))
 global.out$wt <- 1/(global.out$v)
 
 global_CI <- 
-  ggplot(global.out)+
+  ggplot()+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -297,13 +306,11 @@ global_CI <-
   geom_hline(yintercept=0, linetype=2, colour="black")+
   geom_point(aes(x = treat, y = y, size = wt),  colour="grey", data = global.out, alpha = 0.5, position=position_jitter(width=0.1))+
   #geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
-  geom_linerange(aes(x = treat, ymin=ci.lb, ymax=ci.ub), size=0.8)+
+  geom_linerange(data = pred.global, aes(x = treat, ymin=lb, ymax=up), size=0.8)+
   #ylim(-1.6,0.6)+
-  geom_point(aes(x = treat, y = pred), size=10, shape=95)
-
+  geom_point(data = pred.global, aes(x = treat, y = pred), size=10, shape=95)
 
 div(ggplotly(global_CI), align = "center")
-
 
 ```
 
@@ -370,13 +377,84 @@ global.mod.tab <- global.mod.tab[,1:4]
 
 table2 <- kable(global.mod.tab, digits = 2, caption = "Table 2. Gloabl Model Output") %>%
   kable_styling(font_size = 14, full_width = F) %>% 
-  pack_rows("Model Results", 1, 12) %>%
-  pack_rows("Variance Components", 13, 16)
+  pack_rows("Model Results", 1, 6) %>%
+  pack_rows("Variance Components", 7, 10)
 table2
 
 #save_kable(table2, "Table2_GlobalMod_26Sep19.pdf")
 
 ```
+
+
+```{r parameter warming meta, include=FALSE}
+
+w.global <- subset(df2, treat == "yi.w")
+w.global <- subset(w.global, treat.mag == "mag.t")
+
+w.global.mod <- rma.mv(y,v, mods = ~ mag + irradiance + Feeding + days, random = list(~ (1|study), ~ (1|species)), data = w.global) 
+
+y <- summary(w.global.mod)$b
+ci.lb <- summary(w.global.mod)$ci.lb
+ci.ub <- summary(w.global.mod)$ci.ub
+w.global.out <- data.frame(cbind(y,ci.lb,ci.ub))
+colnames(w.global.out)[1]<-"Estimate"
+colnames(w.global.out)[2]<-"Lower 95% CI"
+colnames(w.global.out)[3]<-"Upper 95% CI"
+
+rownames(w.global.out) <- c("Intercept", "Magnitude", "Irradiance", "Feeding", "Days")
+
+```
+
+```{r parameter acid meta, include=FALSE}
+
+a.global <- subset(df2, treat == "yi.a")
+a.global <- subset(a.global, treat.mag == "mag.p")
+a.global.mod <- rma.mv(y,v, mods = ~ mag + irradiance + Feeding + days + mag:days, random = list(~ (1|study), ~ (1|species)), data = a.global) 
+
+y <- summary(a.global.mod)$b
+ci.lb <- summary(a.global.mod)$ci.lb
+ci.ub <- summary(a.global.mod)$ci.ub
+a.global.out <- data.frame(cbind(y,ci.lb,ci.ub))
+colnames(a.global.out)[1]<-"Estimate"
+colnames(a.global.out)[2]<-"Lower 95% CI"
+colnames(a.global.out)[3]<-"Upper 95% CI"
+
+rownames(a.global.out) <- c("Intercept", "Magnitude", "Irradiance", "Feeding","Days", "Magnitude:Days")
+
+```
+
+```{r parameter combination meta, include=FALSE}
+
+i.global <- subset(df2, treat == "yi.i")
+i.global.mod <- rma.mv(y,v, mods = ~ mag + irradiance + Feeding + days + mag:days, random = list(~ (1|study), ~ (1|species)), data = i.global) 
+
+y <- summary(i.global.mod)$b
+ci.lb <- summary(i.global.mod)$ci.lb
+ci.ub <- summary(i.global.mod)$ci.ub
+i.global.out <- data.frame(cbind(y,ci.lb,ci.ub))
+colnames(i.global.out)[1]<-"Estimate"
+colnames(i.global.out)[2]<-"Lower 95% CI"
+colnames(i.global.out)[3]<-"Upper 95% CI"
+
+rownames(i.global.out) <- c("Intercept", "Magnitude", "Irradiance", "Feeding","Days", "Magnitude:Days")
+
+```
+
+```{r parameter table}
+
+full.param <- rbind(w.global.out, a.global.out, i.global.out)
+
+
+param.tab <- kable(full.param, digits = 4, caption = "Table 1 | Effect Size of Experimental Design Parameters") %>% 
+  kable_styling(font_size = 14, full_width = F) %>% 
+  pack_rows("Warming Experiments", 1, 5) %>%
+  pack_rows("Acidification Experiments", 6, 11) %>% 
+  pack_rows("Combined Experiments", 12, 17)
+
+param.tab
+
+```
+
 
 <br/>
 
@@ -391,7 +469,7 @@ df2a<-subset(df2, region!="Curacao")
 df2a<-subset(df2a, region!="Little Cayman")
 df2a<-subset(df2a, region!="Mexico")
 
-region.mod <- rma.mv(y,v, mods = ~ treat * region * mag + days + irradiance + Feeding, random = list(~ (1|study), ~ (1|species)), data = df2a)
+region.mod <- rma.mv(y,v, mods = ~ treat * region * mag, random = list(~ (1|study), ~ (1|species)), data = df2a)
 
 preds2 <- as.data.frame(predict(region.mod, newdata = df2a))[,c(1,3:4)] # pull the mean and CI with the predict function
 region.out <- cbind(df2a, preds2) # add columns to existing df for global output
@@ -401,12 +479,23 @@ region.mod
 ```
 
 
+```{r region mean estimation, include=FALSE}
+
+pred <- summarySE(measurevar = "pred", groupvars = c("treat", "region"), data = region.out)[,c(1,2,4)]
+lb <- summarySE(measurevar = "ci.lb", groupvars = c("treat", "region"), data = region.out)[,4]
+up <- summarySE(measurevar = "ci.ub", groupvars = c("treat", "region"), data = region.out)[,4]
+
+pred.region <- cbind(pred, lb, up)
+
+```
+
+
 ```{r plot region model,  warning=FALSE, fig.height = 3.7, fig.width = 7, fig.align="center"}
 
 region.out$treat <- factor(region.out$treat, levels = c("yi.a","yi.w","yi.i"))
 region.out$wt <- 1/(region.out$v)
 
-region_CI <- ggplot(region.out)+
+region_CI <- ggplot()+
   theme(panel.grid.major=element_blank(), legend.position="bottom", panel.grid.minor=element_blank(), panel.background=element_blank())+
   theme(axis.line=element_line(color="black"))+
   theme(legend.key=element_blank())+
@@ -417,8 +506,8 @@ region_CI <- ggplot(region.out)+
   geom_point(aes(x = treat, y = y, size = wt),  colour="grey", data = region.out, alpha = 0.5, position=position_jitter(width=0.1))+
   #ggtitle("Figure 3.Standardized mean difference by treatment for Florida Keys and Southern Belize")+
   #geom_errorbar(aes(ymin=lb, ymax=ub, width=0.1), size=0.6)+
-  geom_linerange(aes(x = treat, ymin=ci.lb, ymax=ci.ub), size=0.8)+
-  geom_point(aes(x = treat, y = pred), size=10, shape=95)+
+  geom_linerange(data = pred.region, aes(x = treat, ymin=lb, ymax=up), size=0.8)+
+  geom_point(data = pred.region, aes(x = treat, y = pred), size=10, shape=95)+
   facet_wrap(~region)  
 
 div(ggplotly(region_CI), align = "center")
@@ -455,9 +544,9 @@ region.mod.tab <- region.mod.tab[,1:4]
 
 table3 <- kable(region.mod.tab, digits = 4, booktabs = T, caption = "Table 3. Regional Model Output") %>%
   kable_styling(font_size = 14, full_width = F) %>% 
-  pack_rows("Model Results", 1, 16) %>%
+  pack_rows("Model Results", 1, 12) %>%
   #pack_rows("Florida", 17, 20) %>%
-  pack_rows("Variance Components", 17, 20)
+  pack_rows("Variance Components", 13, 16)
 table3
 
 #save_kable(table3, "Table3_RegionalMod_26Sep19.pdf")
@@ -519,7 +608,7 @@ calc.warm$cent.pco2 <- rep("NA", 66)
 
 ```
 
-Here, I am including magnitude only. I think I will add feeding, irradiance, and duration after I solidify how to proceed with constructing the predition dataframe with factors! 
+ 
 ```{r echo=TRUE, message=FALSE}
 
 calc.warm$scale.temp <- scale(calc.warm$temp, center = TRUE, scale = TRUE)
@@ -530,14 +619,18 @@ warm.rate2.mod <- lmer(rate ~ scale.temp + I(scale.temp^2) + t.mag + (1|study) +
 warm.rate.mod <- lmer(rate ~ scale.temp + t.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
 warm.region.mod <- lmer(rate ~ region + t.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) #sing fit
 
-AICc(warm.rate.region.mod, warm.rate.region2.mod, warm.rate2.mod, warm.rate.mod, warm.region.mod)
+warm.rate2.day.mod <- lmer(rate ~ scale.temp + I(scale.temp^2) + t.mag + days + t.mag:days + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
+warm.rate.day.mod <- lmer(rate ~ scale.temp + t.mag + days + t.mag:days + (1|study) + (1|spec), weights = 1/SE, data = calc.warm,REML=F) 
 
-# best fit model without other predictors is warm.rate.region2.mod
+AICc(warm.rate.region.mod, warm.rate.region2.mod, warm.rate2.mod, warm.rate.mod, warm.region.mod,warm.rate2.day.mod,warm.rate.day.mod)
+
+
+# best fit model without other predictors is warm.rate.region2.mod, with warm.rate2.day.mod as close second
 
 summary(warm.rate.region2.mod) # view summary output of model
 confint(warm.rate.region2.mod , method="boot")
 
-warm.pred <- data.frame(temp=seq(26,32,length.out=100), region=rep(c("Belize", "Florida Keys", "Mexico"), length.out = 100), pred=predict(warm.rate.region2.mod, newdata = data.frame(scale.temp=seq(min(calc.warm$scale.temp),max(calc.warm$scale.temp),length.out=100), t.mag=seq(min(calc.warm$t.mag),max(calc.warm$t.mag),length.out=100), region=rep(c("Belize", "Florida Keys", "Mexico"), length.out = 100)), re.form=NA)) # I am not sure if this is the right way to be constructing this dataframe...
+warm.pred <- data.frame(temp=seq(26,32.01,length.out=100), region=rep(c("Belize", "Florida Keys", "Mexico"), length.out = 100), pred=predict(warm.rate.region2.mod, newdata = data.frame(scale.temp=seq(min(calc.warm$scale.temp),max(calc.warm$scale.temp),length.out=100), t.mag=seq(min(calc.warm$t.mag),max(calc.warm$t.mag),length.out=100), region=rep(c("Belize", "Florida Keys", "Mexico"), length.out = 100)), re.form=NA)) 
 
 ```
 
@@ -574,30 +667,25 @@ dev.off()
 
 ```
 
-
-James -- I am not confident that this was the correct way to construct the predicted values dataframe just based on the resulting plotted model. Let me know your thoughts!
-
 <br/>
 
 **Figure 4.** Mean calcification rate (mg cm^−2^ day^−1^) of corals from each warming study by treatment temperature (°C) with the linear mixed effects model quadratic fit. Shape and colour of each point denotes study region (blue circle = Belize; brown square = Florida; grey triangle = Mexico) and size of shape represents the weight (1/SE) of study.
 
-[ Model: rate ~ temperature + region + temperature^2^ + magnitude + (1  | study) + (1 | spec), weights = 1 / SE ]
 
 ```{r lmer warming output,  fig.align='center' }
 
-tab_model(warm.rate2.mod, show.r2 = FALSE, show.aicc = TRUE, title = "Table 4. Mixed-effects model output of effects of temperature on calcification rates")
+tab_model(warm.rate.region2.mod, show.r2 = FALSE, show.aicc = TRUE, title = "Table 4. Mixed-effects model output of effects of temperature on calcification rates")
 
 ```
 
 <br/><br/>
 
-#### Ocean acidification calcification rate against aragonite saturation state analysis (included in supplemental materials)
-
-**I stopped here because I wanted to make sure that I did the warming right.**
 
 ```{r}
 
 calc.a<-calc[,-c(19:27)] #remove columns not needed for acid analysis
+
+calc.a$p.mag <- calc.a$c.pco2 - calc.a$a.pco2
 
 completeFun <- function(data, desiredCols) {
   completeVec <- complete.cases(data[, desiredCols])
@@ -651,16 +739,22 @@ calc.arag$scale.arag <- scale(calc.arag$acid, center = TRUE, scale = TRUE)
 
 acid.rate.region.mod <- lmer(rate ~ scale.arag + region + p.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
 acid.rate.region2.mod <- lmer(rate ~ scale.arag + region + p.mag + I(scale.arag^2) + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
-acid.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + p.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+#acid.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + p.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) # didn't converge 
 acid.rate.mod <- lmer(rate ~ scale.arag + p.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
 acid.region.mod <- lmer(rate ~ region + p.mag + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
 
-AICc(acid.rate.mod,acid.rate2.mod,acid.rate.region.mod,acid.rate.region2.mod,acid.region.mod)
+acid.feed.day.mag.rate.mod <- lmer(rate ~ scale.arag + p.mag + Feeding + days + p.mag:days + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.day.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + p.mag + days + p.mag:days + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.feed.day.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + p.mag +  Feeding + days + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) 
+acid.feed.rate2.mod <- lmer(rate ~ scale.arag + I(scale.arag^2) + p.mag +  Feeding + (1|study) + (1|spec), weights = 1/SE, data = calc.arag,REML=F) # best fit model
 
-summary(acid.rate2.mod) # view summary output of model
-confint(acid.rate2.mod , method="boot")
 
-acid.pred <- data.frame(acid=seq(1.7,5.8,length.out=100),pred=predict(acid.rate2.mod, newdata = data.frame(scale.arag=seq(min(calc.arag$scale.arag),max(calc.arag$scale.arag),length.out=100), p.mag=seq(min(calc.arag$p.mag),max(calc.arag$p.mag),length.out=100)),re.form=NA))
+AICc(acid.rate.mod,acid.rate.region.mod,acid.rate.region2.mod,acid.region.mod,acid.feed.day.mag.rate.mod,acid.day.rate2.mod,acid.feed.day.rate2.mod,acid.feed.rate2.mod)
+
+summary(acid.rate.region2.mod) # continuing with this one for simplicity
+confint(acid.rate.region2.mod, method="boot")
+
+acid.pred <- data.frame(acid=seq(0.7,5.8,length.out=100), region=rep(c("Belize", "Curacao", "Florida Keys"), length.out = 100),pred=predict(acid.rate.region2.mod, newdata = data.frame(scale.arag=seq(min(calc.arag$scale.arag),max(calc.arag$scale.arag),length.out=100), p.mag=seq(min(calc.arag$p.mag),max(calc.arag$p.mag), length.out=100), region=rep(c("Belize", "Curacao", "Florida Keys"), length.out=100)),re.form=NA))
 
 ```
 
@@ -675,7 +769,7 @@ global_OA_calc <-
   theme(legend.key=element_blank())+
   scale_shape_manual("Region", values = c(21,22,24))+
   scale_fill_manual("Region", values = c("#5ab4ac", "#d8b365", "#f5f5f5"))+
-  geom_line(data = acid.pred, aes(y = pred), color="black",size = 1)+
+  geom_line(data = acid.pred, aes(y = pred, group = region), size = 1)+
   ylab(bquote('Calcification rate (mg' ~cm^-2* ~day^-1*')'))+
   xlab(bquote('Aragonite Saturation State'))
 global_OA_calc
@@ -690,10 +784,12 @@ dev.off()
 
 ```
 
+
 ```{r lmer arag output,  fig.align='center' }
-tab_model(acid.rate2.mod, show.r2 = FALSE, show.aicc = TRUE, title = "Table 4. Mixed-effects model output of effects of aragonite saturation state on calcification rates")
+tab_model(acid.rate.region2.mod, show.r2 = FALSE, show.aicc = TRUE, title = "Table 4. Mixed-effects model output of effects of aragonite saturation state on calcification rates")
 ```
 
+**Figure 5.** Mean calcification rate (mg cm−2 day−1) of corals from each acidification study by treatment aragonite saturation state (ΩArag) with the linear mixed effects model quadratic fit. Shape and colour of each point denotes study region (blue circle = Belize; brown square = Curacao; grey triangle = Florida Keys) and size of shape represents the weight (1/SE) of study.
 
 ***
 
