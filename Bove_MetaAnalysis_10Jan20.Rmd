@@ -381,7 +381,7 @@ ggsave("Figure3_RegionalCI_10Jan20.pdf", width = 8, height = 3.5)
 <br/>
 
 ####(c.)	Temperature and aragnoite saturation state impacts on calcification rates across studies
-Secondary analysis of mean calcification rates (mg cm^−2^ day^−1^) against treatment temperature across all studies revealed a parabolic response to temperature (**Figure 4 and Supplementary Tables S4, S5**). Similarly, mean calcification rates (mg cm^−2^ day^−1^) across Ω~Arag~ resulted in a nonlinear response to acidification (**Figure 5 and Supplementary Tables S6, S7**). Both nonlinear trends in response to temperature and Ω~Arag~ were a result of treatment rather than region, suggesting regional differences identified in the meta-analysis were due to experimental designs employed to represent current regional environmental differences. 
+Secondary analysis of mean calcification rates (mg cm^−2^ day^−1^) against treatment temperature across all studies revealed a parabolic response to temperature (**Figure 4 and Supplementary Tables S4, S5**), with modelled calcification rates higher for corals collected from the Florida Keys than those from Belize. Similarly, mean calcification rates (mg cm^−2^ day^−1^) across Ω~Arag~ resulted in a nonlinear response to acidification (**Figure 5 and Supplementary Tables S6, S7**), again with modelled calcification rates higher in the Florida Keys than in Belize. Both nonlinear trends in response to temperature and Ω~Arag~ were a result of treatment rather than region, suggesting regional differences identified in the meta-analysis were due to experimental designs employed to represent current regional environmental differences. 
 
 ```{r warm df}
 
