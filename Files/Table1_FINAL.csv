@@ -1,0 +1,13 @@
+author,Study,Location,Collection Sites,Species,Treatments,Experiment Duration,Feeding,Seawater,Control Temperature,Temperature,Control pCO2,pCO2,days,Feeding,Seawater,p.mag,t.mag,calc_method,irradiance
+Albright,Albright et al. 2011,Florida,"Little Grecian, Key Largo",Porites astreoides,pCO2,49 d,NA,Natural seawater,28,NA,380,800,49,ND,N,420,NA,O,NA
+Bedwell-Ivers,Bedwell-Ivers et al. 2017,Little Cayman,Little Cayman Research Center,Acropora cervicornis Porites divaricata,pCO2,28 d,NA,Natural seawater,30,NA,487,791,28,ND,N,304,NA,BW,800
+Bove,Bove et al. 2019,Belize,"Inshore, Offshore (Sapadilla Cayes)","Porites astreoides, Pseudodiploria strigosa, Siderastrea siderea, Undaria tenuifolia","Warming, pCO2, combination",93 d,Frozen and newly hatched Artemia every other day ,Filtered non-native seawater,28,31,405,701,93,3,N,296,3,BW,300
+Castillo,Castillo et al. 2014,Belize,"Nearshore, Backreef, Forereef (Sapadilla Cayes)",Siderastrea siderea,"Warming, pCO2",95 d,Frozen Artemia every other day,Artificial seawater,28,32,472,704,95,3,A,232,4,BW,250
+Enochs,Enochs et al. 2014,Florida,Dade County,Acropora cervicornis,pCO2,42 d,NA,Natural seawater ,28,NA,513,870.9,42,ND,N,357.9,NA,BW,178
+Grottoli,Grottoli et al. 2014,Mexico,Puerto Morelos,"Porites divaricata, Porites astreoides, Orbicella faveolata",Warming,15 d,Fed,Natural seawater,30.6,31.6,NA,NA,15,ND,N,NA,1,BW,600
+Horvath,Horvath et al. 2016,Belize,"Nearshore, Backreef, Forereef (Sapadilla Cayes)",Siderastrea siderea,"Warming, pCO2, combination",60 d,Frozen Artemia twice weekly,Artificial seawater,28,31,426,890,60,2,A,464,3,BW,250
+Jury,Jury et al. 2010,Curacao,Seaquarium,Madracis auretenra,pCO2,2 h,Artemia nauplii twice weekly,Natural seawater ,28,NA,391,1480,0.083,2,N,1089,NA,O,200
+Okazaki,Okazaki et al. 2017,Florida,"Key Biscayne, Biscayne National Park, Key West","Acropora cervicornis, Agaricia agaricites, Dichocoenia stokesii, Montastraea cavernosa, Orbicella faveolata, Porites astreoides, Porites divaricata, Pseudodiploria strigosa, Siderastrea siderea, Siderastrea radians, Solenastrea hyades","Warming, pCO2, combination",6 w,Live rotifers and larval twice weekly,Natural seawater ,27,30.3,400,1340,42,2,N,940,3.3,BW,327
+Reneger,Reneger et al. 2005,Florida,Broward County,Acropora cervicornis,pCO2,8 w,NA,1:1 Artificial with natural seawater,25.3,NA,358.5,742.5,56,ND,B,384,NA,NA,NA
+Towle,Towle et al. 2015,Florida,South Florida,Acropora cervicornis,"Warming, pCO2, combination",8 w,Dried zooplankton twice weekly,Natural seawater,26,30,390,800,56,2,N,410,4,BW,353
+Kenkel,Kenkel et al. 2013,Florida,Inshore and Offshore Sugarloaf Key,Porites astreoides,Warming,43 d,NA,Natural seawater,27.2,30.9,NA,NA,43,ND,N,NA,3.7,BW,NA
