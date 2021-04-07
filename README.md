@@ -2,7 +2,7 @@
 
 **GitHub repository containing data and code accompanying the Caribbean Coral Calcification Meta-analysis (Bove et al 2020)**
 
-DOI HERE
+<a href="https://zenodo.org/badge/latestdoi/185855398"><img src="https://zenodo.org/badge/185855398.svg" alt="DOI"></a>
 
 ### Title: *Meta-Analysis Reveals Reduced Coral Calcification Under Projected Ocean Warming but Not Under Acidification Across the Caribbean Sea*
 
