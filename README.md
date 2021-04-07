@@ -1,4 +1,4 @@
-# Bove2020_GVC_CoralReefs
+# Bove2020_MetaAnalysis_FrontMarSci
 
 **GitHub repository containing data and code accompanying the Caribbean Coral Calcification Meta-analysis (Bove et al 2020)**
 
